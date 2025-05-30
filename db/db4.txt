@@ -1,0 +1,39 @@
+--task 4.1 Написать запрос создающий таблицу активности пользователя в приложении включающую: 
+--         уникальный идентификатор события, уникальный идентификатор пользователя, 
+--         дата и время входа, действие совершенное пользователем. Установить необходимые ограничения
+create table user_activity (
+    event_id UUID primary key default gen_random_uuid(),
+    user_id UUID not null,
+    login_time TIMESTAMPTZ not null check (login_time <= created_at),
+    action_type VARCHAR(50) not null check (action_type in ('login', 'purchase', 'view', 'search', 'logout')),
+    created_at TIMESTAMPTZ not null default NOW(),
+);
+
+--task 4.2 Изменить таблицу добавив туда колонку флага платного действия с дефолтным значением отрицания
+alter table user_activity 
+add column is_premium_action BOOLEAN not null default false;
+
+--task 4.3 Создать таблицу платежей в приложении, включающую уникальный идентификатор платежа, времени, пользователя, приложения и сумму платежа
+create table payments (
+    payment_id UUID primary key default gen_random_uuid(),
+    user_id UUID not null,
+    app_id UUID not null,
+    payment_time TIMESTAMPTZ not null,
+    amount DECIMAL(12,2) not null
+);
+
+--task 4.4 Создать представление из таблицы активности пользователя подсчитывающего количество активностей для каждого пользователя за день
+create or replace view daily_user_activity as
+select
+    user_id,
+    login_time::date as activity_date,
+    COUNT(*) as total_actions,
+    SUM(case when is_premium_action then 1 else 0 end) as premium_actions
+from
+    user_activity
+group by 
+    user_id, 
+    login_time::date
+order by 
+    activity_date desc, 
+    total_actions desc;

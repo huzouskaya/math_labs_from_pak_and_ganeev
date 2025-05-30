@@ -1,0 +1,135 @@
+--task 2.1: Рассмотреть магазины с точки зрения выручки за каждый месяц 
+--             (от самого выгодного до самого невыгодного)
+--             Формат вывода: Название магазина, месяц, сумма выручки
+with shop_monthly_income as (
+    select
+        s.shop_guid,
+        extract(month from s.date_sale) as month,
+        SUM(s.cnt * p.price) as income
+    from
+        sales_2 s
+        join products p ON s.product_guid = p.guid
+    group by
+        s.shop_guid, extract(month from s.date_sale)
+)
+select 
+    sh.shop_name,
+    sm.month,
+    sm.income
+from 
+    shop_monthly_income sm
+    join shops sh on sm.shop_guid = sh.guid
+order by 
+    sm.income desc;
+-- "псевдонимы" это алиасы (s, sm, sh, p)
+
+--task 2.2: Для каждого магазина вывести самый продаваемый (по количеству) товар за 2020 год.
+--          Формат вывода: Название магазина, название товара, количество проданного товара за 2020 год
+with shop_product_sales as (
+    select
+        s.shop_name,
+        pt.type as product_name,
+        sum(s2.cnt) as total_sold,
+        row_number() over(partition by s.shop_name order by sum(s2.cnt) desc) as rank
+    from
+        sales_2 s2
+        join shops s on s2.shop_guid = s.guid
+        join products p on s2.product_guid = p.guid
+        join product_type pt on p.guid_type = pt.guid
+    where
+        s2.date_sale between '2020-01-01' and '2020-12-31'
+    group by
+        s.shop_name, pt.type
+)
+select
+    shop_name,
+    product_name,
+    total_sold
+from
+    shop_product_sales
+where
+    rank = 1
+order by
+    shop_name;
+
+-- partition by аналогично GROUP BY, но без свёртки, т.е. строки остаются на местах
+-- ОКОННЫЕ ФУНКЦИИ
+-- Агрегатные (как оконные)
+-- Ранжирующие:
+--     ROW_NUMBER() — порядковый номер строки
+--     RANK() — ранг с пропусками
+--     DENSE_RANK() — ранг без пропусков
+--     NTILE(n) — разбивает на n групп
+-- Функции смещения:
+--     LAG(столбец, n) — значение из строки выше
+--     LEAD(столбец, n) — значение из строки ниже
+--     FIRST_VALUE(столбец) — первое значение в окне
+--     LAST_VALUE(столбец) — последнее значение в окне
+-- Аналитические:
+--     PERCENT_RANK() — относительный ранг (0-1)
+--     CUME_DIST() — кумулятивное распределение
+
+-- task 2.3  Вывести магазины и дни в которых количество проданного товара совпало (если такие есть)
+--           Формат вывода: Название магазина 1, Название магазина 2, количество товара
+with shop_daily_revenue as (
+    select
+        s2.date_sale::date as sale_date,
+        s2.shop_guid,
+        SUM(p.price * s2.cnt) as revenue
+    from
+        sales_2 s2
+    join
+        products p on s2.product_guid = p.guid
+    group by
+        s2.date_sale::date, s2.shop_guid
+)
+select
+    s1.shop_name as shop_1,
+    s2.shop_name as shop_2,
+    r1.sale_date,
+    r1.revenue
+from
+    shop_daily_revenue r1
+join
+    shop_daily_revenue r2 on r1.sale_date = r2.sale_date
+    and r1.shop_guid < r2.shop_guid
+    and r1.revenue = r2.revenue
+join
+    shops s1 on r1.shop_guid = s1.guid
+join
+    shops s2 on r2.shop_guid = s2.guid
+order by
+    r1.sale_date, s1.shop_name, s2.shop_name;
+
+-- task 2.4 Подсчитать двумя различными запросами среднюю (от сезона) сумму продаж для каждого магазина для осени и для зимы, 
+--          после чего обьединить их результаты
+with seasonal_sales as (
+    select 
+        s.shop_name,
+        sa.cnt * p.price as revenue,
+        case
+            when extract(month from sa.date_sale) in (9, 10, 11) then 'Autumn'
+            when extract(month from sa.date_sale) in (12, 1, 2) then 'Winter'
+        end as season
+    from sales_2 sa
+    join shops s on sa.shop_guid = s.guid
+    join products p on sa.product_guid = p.guid
+    where extract(month from sa.date_sale) in (1, 2, 9, 10, 11, 12)
+)
+select
+    shop_name,
+    AVG(revenue) as avg_revenue,
+    'Autumn' as season
+from seasonal_sales
+where season = 'Autumn'
+group by shop_name
+union all
+select
+    shop_name,
+    AVG(revenue) as avg_revenue,
+    'Winter' as season
+from seasonal_sales
+where season = 'Winter'
+group by shop_name
+order by shop_name, season;
+

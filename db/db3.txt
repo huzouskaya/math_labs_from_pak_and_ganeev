@@ -1,0 +1,136 @@
+-- task 3.1 Проставить рейтинг самых выгодных товаров за зиму 2020
+with winter_sales as (
+    select
+        pt.type as product_name,
+        SUM(s.cnt * p.price) as total_revenue,
+        RANK() over (order by SUM(s.cnt * p.price) desc) as revenue_rank
+    from
+        sales_2 s
+    inner join products p on
+        s.product_guid = p.guid and
+        s.date_sale between '2019-12-01' and '2020-02-29'
+    inner join product_type pt on 
+        p.guid_type = pt.guid
+    group by 
+        pt.type
+)
+select
+    product_name,
+    total_revenue,
+    revenue_rank
+from
+    winter_sales
+where
+    revenue_rank <= 10
+order by
+    revenue_rank;
+
+--для задания 3.2, чтоб выбрать guid магазина
+select shops.* from shops
+
+--task 3.2 Подсчитать бегущую сумму для определенного магазина за первую неделю марта 2020
+with shop_daily_sales as (
+    select
+        s.date_sale::date as sale_date,
+        SUM(s.cnt * p.price) as daily_revenue
+    from
+        sales_2 s
+    inner join 
+        products p on s.product_guid = p.guid
+    where
+        s.shop_guid = '7f6d7084-207e-406b-a365-54ca25a28fea' and
+        s.date_sale between '2020-03-01' and '2020-03-07'
+    group by
+        s.date_sale::date
+)
+select
+    sale_date,
+    daily_revenue,
+    SUM(daily_revenue) over (order by sale_date) as running_total
+from
+    shop_daily_sales
+order by 
+    sale_date;
+
+--task 3.3 Подсчитать самый продаваемый товар в неделе и создать колонки самый продаваемый товар за предыдущую неделю и самый продаваемый товар за следуюую неделю
+with weekly_top_products as (
+    select 
+        date_trunc('week', s.date_sale) as week_start,
+        pt.type as product_name,
+        SUM(s.cnt * p.price) as total_revenue,
+        RANK() over (
+            partition by date_trunc('week', s.date_sale) 
+            order by SUM(s.cnt * p.price) desc
+        ) as week_rank
+    from
+        sales_2 s
+    inner join 
+        products p on s.product_guid = p.guid
+    inner join
+        product_type pt on p.guid_type = pt.guid
+    group by 
+        date_trunc('week', s.date_sale), pt.type
+),
+ranked_products as (
+    select 
+        week_start,
+        product_name,
+        total_revenue,
+        LAG(product_name) over (order by week_start) as prev_week_top,
+        LEAD(product_name) over (order by week_start) as next_week_top
+    from 
+        weekly_top_products
+    where
+        week_rank = 1
+)
+select
+    week_start,
+    product_name as current_week_top,
+    prev_week_top,
+    next_week_top,
+    total_revenue
+from
+    ranked_products
+order by 
+    week_start;
+
+--task 3.4 Найти все имена магазинов начинающиеся с любого набора букв (а не цифр или спецсимволов) и имеющих в своем названии хотя бы 2 слова 
+select 
+    shop_name
+from 
+    shops
+where 
+    shop_name ~ '^[A-Za-zА-Яа-я]+\s+[A-Za-zА-Яа-я]+.*' and
+    shop_name ~ '^[^0-9!@#$%^&*()_+=]*$'
+order by
+    shop_name;
+
+--task 3.5 Для каждого магазина подсчитать ежедневную выручку и отсортировать в каждом месяце дни по выручке
+with daily_revenue as (
+    select
+        sh.shop_name,
+        date_trunc('month', s.date_sale) as month_date,
+        s.date_sale::date as sale_date,
+        SUM(s.cnt * p.price) as revenue,
+        RANK() over (
+            partition by sh.shop_name, date_trunc('month', s.date_sale) 
+            order by SUM(s.cnt * p.price) desc
+        ) as day_rank_in_month
+    from 
+        sales_2 s
+    inner join shops sh on s.shop_guid = sh.guid
+    inner join products p on s.product_guid = p.guid
+    group by 
+        sh.shop_name, date_trunc('month', s.date_sale), s.date_sale::date
+)
+select 
+    shop_name,
+    TO_CHAR(month_date, 'YYYY-MM') as month,
+    sale_date,
+    revenue,
+    day_rank_in_month
+from 
+    daily_revenue
+order by 
+    shop_name, month_date, day_rank_in_month;
+

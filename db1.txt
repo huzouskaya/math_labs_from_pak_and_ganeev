@@ -1,0 +1,83 @@
+--task 0: Хочу увидеть таблицу, помня, что селект звезда это плохо
+select sales.*
+from sales
+
+--task 1.1: Подсчитать общую сумму продаж за февраль 2020 года 
+select 
+    sum(cnt * price) as total_income
+from 
+    sales
+where 
+    date_sale >= '2020-02-01' and 
+    date_sale < '2020-03-01';
+
+--task 1.2: Подсчитать общее количество проданных (двух) видов товаров за март 2020 года
+select
+    product_name,
+    sum(cnt) as units_sold
+from 
+    sales
+where 
+    product_name in ('Hat', 'Cotton Soap') and
+    extract(month from date_sale) = 3 and
+    extract(year from date_sale) = 2020
+group by  
+    product_name;
+-- сноска к заданию 2 (разобраться с group by надо было адекватно)
+-- GROUP BY группирует строки, которые имеют одинаковые значения в указанных столбцах, в одну строку результата
+-- Порядок выполнения операций:
+--             FROM → WHERE → GROUP BY → HAVING → SELECT → ORDER BY → LIMIT
+-- GROUP BY автоматически удаляет дубликаты в столбцах группировки
+
+--task 1.3: Вывести уникальные названия магазинов без учёта названий, заканчивающихся буквой "а"
+select distinct shop_name
+from sales
+where shop_name not like '%a'
+order by shop_name;
+
+--task 1.4: Вывести топ 10 продаж, совершённых в определенном магазине за осень 2020 года
+select distinct
+    uuid_sale,
+    date_sale,
+    product_name,
+    cnt,
+    price,
+    (cnt * price) as total_amount
+from
+    sales
+where
+    shop_name = 'Nicole Mack' and
+    date_sale::date between '2020-09-01' and '2020-11-30'
+order by 
+    total_amount desc
+limit 10;
+--коммуниздинг из задания 2 с упрощением
+-- Порядок выполнения операций:
+--             FROM → WHERE → SELECT → ORDER BY → LIMIT
+-- то есть сперва откуда, потом избранные качества, после выбираем, какие столбцы нужны, сортируем, ограничиваем
+-- если в таблице окажется слишком мало чего-то, то лимит 10 вернёт не 10, а сколько есть, это возможно очевидно, но да
+
+--task 1.5: Вывести количество проданных товаров для всех магазинов (за исключением двух) за зиму 2020 года
+select
+    shop_name,
+    sum(cnt) as total_units_sold
+from
+    sales
+where
+    shop_name not in ('Joseph Obrien', 'Miranda Khan') and
+    (
+        (date_sale >= '2020-12-01' and date_sale <= '2020-12-31') or
+        (date_sale >= '2021-01-01' and date_sale <= '2021-01-31') or
+        (date_sale >= '2021-02-01' and date_sale <= '2021-02-28')
+    )
+group by 
+    shop_name
+order by 
+    total_units_sold desc;
+-- сноска об использовании extract вместо множества сравнений
+-- (extract(year from date_sale) = 2020 and extract(month from date_sale) = 12) or
+-- (extract(year from date_sale) = 2021 and extract(month from date_sale) in (1, 2))
+-- преимущества not in: читаемость, борьба с громоздкостью, можно использовать с результатами подзапросов
+-- замечания: при большом кол-ве искл. лучше использовать LEFT JOIN
+--            если список значений содержит NULL, бежать и выбрасывать его оттуда
+--                 x != NULL всегда возвращает UNKNOWN (в SQL нельзя сравнить что-либо с NULL)
